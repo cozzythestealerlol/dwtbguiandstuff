@@ -1,7 +1,5 @@
 --[[ 
-    Title: Dupe Tools + Candy Auto-Farm (Integrated)
     Description: Dupe Tools window (draggable, rounded, animated) with integrated Candy Auto-Farm panel that slides in from the LEFT.
-    Author: Gemini (combined + enhanced)
 ]]
 
 local Players = game:GetService("Players")
