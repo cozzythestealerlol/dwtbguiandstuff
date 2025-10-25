@@ -1,0 +1,728 @@
+--[[ 
+    Title: Dupe Tools + Candy Auto-Farm (Integrated)
+    Description: Dupe Tools window (draggable, rounded, animated) with integrated Candy Auto-Farm panel that slides in from the LEFT.
+    Author: Gemini (combined + enhanced)
+]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+
+--// CONFIGURATION
+local WINDOW_NAME = "Dupe Tools"
+local INITIAL_WIDTH = 150 -- Used for initial size
+local FINAL_SIZE = UDim2.new(0.25, 0, 0.35, 0)
+local TITLE_BAR_HEIGHT = 30
+local BUTTON_SIZE = UDim2.new(0, 12, 0, 12)
+local BUTTON_MARGIN = 8
+local BUTTON_SPACING = 6
+local CORNER_RADIUS = 10
+local TRANSPARENCY = 0.3 -- slightly translucent
+
+local COLORS = {
+	Main = Color3.fromRGB(2, 13, 33),
+	TitleBar = Color3.fromRGB(12, 23, 50),
+	Text = Color3.new(1, 1, 1),
+	ButtonClose = Color3.fromRGB(255, 95, 86),
+	ButtonMinimize = Color3.fromRGB(255, 189, 46),
+	ButtonOther = Color3.fromRGB(39, 205, 64)
+}
+
+local TWEEN_INFO = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+--// GUI STATE FOR FULL-SCREEN TOGGLE (NEW)
+local fullScreen = false
+local originalSize = FINAL_SIZE 
+local originalPosition = UDim2.new(0.5, 0, 0.5, 0) -- Initial position is centered
+
+--// GUI CREATION
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TrafficLightGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = PlayerGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = WINDOW_NAME
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, INITIAL_WIDTH, 0, TITLE_BAR_HEIGHT + 10)
+MainFrame.BackgroundColor3 = COLORS.Main
+MainFrame.BackgroundTransparency = 1
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, CORNER_RADIUS)
+
+--// TITLE BAR
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, TITLE_BAR_HEIGHT)
+TitleBar.BackgroundColor3 = COLORS.TitleBar
+TitleBar.BackgroundTransparency = 1
+TitleBar.BorderSizePixel = 0
+TitleBar.ZIndex = 2
+TitleBar.Active = true -- FIX: Enables input events for dragging
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, CORNER_RADIUS)
+
+local Title = Instance.new("TextLabel")
+Title.Text = WINDOW_NAME
+Title.AnchorPoint = Vector2.new(0.5, 0)
+Title.Position = UDim2.new(0.5, 0, 0, 0)
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.BackgroundTransparency = 1
+Title.TextColor3 = COLORS.Text
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 16
+Title.TextTransparency = 1
+Title.ZIndex = 3
+Title.Parent = TitleBar
+
+--// BUTTON CREATOR (small traffic lights)
+local function makeButton(name, color, tooltipText, index)
+	local Button = Instance.new("TextButton")
+	Button.Name = name .. "Button"
+	Button.Size = BUTTON_SIZE
+	Button.Position = UDim2.new(0, BUTTON_MARGIN + (index - 1) * (BUTTON_SIZE.X.Offset + BUTTON_SPACING), 0.5, -6)
+	Button.BackgroundColor3 = color
+	Button.BorderSizePixel = 0
+	Button.AutoButtonColor = false
+	Button.Text = ""
+	Button.BackgroundTransparency = 1
+	Button.ZIndex = 4
+	Button.Parent = TitleBar
+
+	Instance.new("UICorner", Button).CornerRadius = UDim.new(1, 0)
+
+	local Tooltip = Instance.new("TextLabel")
+	Tooltip.Size = UDim2.new(0, 100, 0, 20)
+	Tooltip.Position = UDim2.new(0.5, -50, 0, 18)
+	Tooltip.BackgroundTransparency = 1
+	Tooltip.TextColor3 = Color3.new(1, 1, 1)
+    Tooltip.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	Tooltip.Font = Enum.Font.SourceSans
+	Tooltip.TextSize = 13
+	Tooltip.Text = tooltipText
+	Tooltip.Visible = false
+	Tooltip.TextTransparency = 1
+	Tooltip.ZIndex = 5
+    Tooltip.Name = "TooltipLabel" -- Added for easier finding
+	Tooltip.Parent = Button
+
+	Button.MouseEnter:Connect(function()
+		Tooltip.Visible = true
+		TweenService:Create(Tooltip, TweenInfo.new(0.15), {BackgroundTransparency = 0, TextTransparency = 0}):Play()
+	end)
+
+	Button.MouseLeave:Connect(function()
+		TweenService:Create(Tooltip, TweenInfo.new(0.15), {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+		task.delay(0.15, function() Tooltip.Visible = false end)
+	end)
+
+	return Button
+end
+
+local Red = makeButton("Close", COLORS.ButtonClose, "Close", 1)
+local Yellow = makeButton("Minimize", COLORS.ButtonMinimize, "Minimize", 2)
+local Green = makeButton("Maximize", COLORS.ButtonOther, "Full-Screen Mode", 3) 
+
+--// CONTENT FRAME (main area)
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, 0, 1, -TITLE_BAR_HEIGHT)
+Content.Position = UDim2.new(0, 0, 0, TITLE_BAR_HEIGHT)
+Content.BackgroundColor3 = COLORS.Main
+Content.BackgroundTransparency = TRANSPARENCY
+Content.BorderSizePixel = 0
+Content.ZIndex = 1
+Content.Parent = MainFrame
+Content.ClipsDescendants = true
+--Instance.new("UICorner", Content).CornerRadius = UDim.new(0, CORNER_RADIUS)
+
+local Label = Instance.new("TextLabel")
+Label.Size = UDim2.new(1, 0, 1, 0)
+Label.BackgroundTransparency = 1
+Label.Text = "" -- ANNOYING TEXT REMOVED
+Label.TextColor3 = Color3.new(1, 1, 1)
+Label.Font = Enum.Font.SourceSans
+Label.TextSize = 20
+Label.TextTransparency = 1
+Label.ZIndex = 2
+Label.Parent = Content
+
+-- Create a top-level UI container inside Content for controls
+local ControlsFrame = Instance.new("Frame")
+ControlsFrame.Size = UDim2.new(1, -20, 1, -20)
+ControlsFrame.Position = UDim2.new(0, 10, 0, 10)
+ControlsFrame.BackgroundTransparency = 1
+ControlsFrame.Parent = Content
+
+-- Layout for ControlsFrame
+local controlsLayout = Instance.new("UIListLayout")
+controlsLayout.FillDirection = Enum.FillDirection.Vertical
+controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+controlsLayout.Padding = UDim.new(0, 8)
+controlsLayout.Parent = ControlsFrame
+
+-- Simple helper to create buttons in ControlsFrame
+local function createControlButton(text, width)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, width or 180, 0, 36)
+	btn.BackgroundTransparency = 0
+	btn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.Font = Enum.Font.SourceSansBold
+	btn.TextSize = 14
+	btn.Text = text
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+	btn.Parent = ControlsFrame
+	return btn
+end
+
+-- Candy main launcher button (shows/hides sliding panel)
+local candyLauncher = createControlButton("Candy Auto-Farm", 200)
+
+--// DRAGGING FIXED
+do
+    local dragging = false
+    local dragStart = Vector2.zero
+    local startPos = UDim2.new()
+
+    local function moveFrame(inputPos)
+        local delta = inputPos - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+
+            -- Listen to mouse movement while dragging
+            local moveConnection
+            moveConnection = UserInputService.InputChanged:Connect(function(moveInput)
+                if dragging and (moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch) then
+                    moveFrame(moveInput.Position)
+                end
+            end)
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    moveConnection:Disconnect()
+                end
+            end)
+        end
+    end)
+end
+
+--// BUTTON LOGIC (close / minimize / green)
+local minimized = false
+local debounce = false
+local guiElements = {MainFrame, TitleBar, Content, Title, Label, Red, Yellow, Green}
+
+Red.MouseButton1Click:Connect(function()
+	if debounce then return end
+	debounce = true
+	local fadeOut = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	for _, obj in ipairs(guiElements) do
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+			TweenService:Create(obj, fadeOut, {TextTransparency = 1}):Play()
+		end
+		if obj:IsA("Frame") or obj:IsA("TextButton") then
+			TweenService:Create(obj, fadeOut, {BackgroundTransparency = 1}):Play()
+		end
+	end
+	task.wait(0.6)
+	ScreenGui:Destroy()
+end)
+
+Yellow.MouseButton1Click:Connect(function()
+	if debounce then return end
+	debounce = true
+    
+    -- Exit full screen if active before minimizing
+    if fullScreen then
+        Green.MouseButton1Click:Fire()
+        task.wait(TWEEN_INFO.Time)
+    end
+    
+	local goal = {}
+    local currentWidth = MainFrame.Size.X
+	if minimized then
+		goal.Size = FINAL_SIZE
+        TweenService:Create(Content, TWEEN_INFO, {BackgroundTransparency = TRANSPARENCY}):Play()
+        TweenService:Create(Label, TWEEN_INFO, {TextTransparency = 0}):Play()
+	else
+		goal.Size = UDim2.new(currentWidth.Scale, currentWidth.Offset, 0, TITLE_BAR_HEIGHT)
+        TweenService:Create(Content, TWEEN_INFO, {BackgroundTransparency = 1}):Play()
+        TweenService:Create(Label, TWEEN_INFO, {TextTransparency = 1}):Play()
+	end
+    
+	TweenService:Create(MainFrame, TWEEN_INFO, goal):Play()
+	minimized = not minimized
+	task.delay(TWEEN_INFO.Time, function() debounce = false end)
+end)
+
+-- Green Button Logic (HANDLES TOGGLE AND TOOLTIP)
+Green.MouseButton1Click:Connect(function()
+    if debounce then return end
+    debounce = true
+    
+    local tooltip = Green:FindFirstChildOfClass("TextLabel")
+    
+    -- Cannot go full screen while minimized
+    if minimized then
+        Yellow.MouseButton1Click:Fire()
+        task.wait(TWEEN_INFO.Time)
+    end
+
+    local targetSize
+    local targetPosition
+
+    if not fullScreen then
+        -- 1. Go to Full-Screen Mode
+        -- Store the current size and position before changing
+        originalSize = MainFrame.Size
+        originalPosition = MainFrame.Position
+
+        targetSize = UDim2.new(1, 0, 1, 0)
+        targetPosition = UDim2.new(0.5, 0, 0.5, 0) -- Centered for full screen
+        
+        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = 0.5}):Play() 
+        fullScreen = true
+        if tooltip then tooltip.Text = "Restore Down" end -- Tooltip update
+    else
+        -- 2. Go back to Original Size (Toggle Off)
+        targetSize = originalSize
+        targetPosition = originalPosition
+        
+        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = TRANSPARENCY}):Play() 
+        fullScreen = false
+        if tooltip then tooltip.Text = "Full-Screen Mode" end -- Tooltip update
+    end
+
+    -- Tween the frame size and position
+    local tween = TweenService:Create(MainFrame, TWEEN_INFO, {
+        Size = targetSize,
+        Position = targetPosition
+    })
+    
+    tween:Play()
+
+    -- Release debounce after tween completion
+    tween.Completed:Wait()
+    task.delay(0.1, function() debounce = false end)
+end)
+
+
+--// STARTUP ANIMATION (kept)
+local function animateStartup()
+	local intro = Instance.new("TextLabel")
+	intro.Size = UDim2.new(1, 0, 1, 0)
+	intro.BackgroundTransparency = 1
+	intro.Text = WINDOW_NAME
+	intro.TextColor3 = Color3.new(1, 1, 1)
+	intro.Font = Enum.Font.Fantasy
+	intro.TextSize = 26
+	intro.TextTransparency = 1
+	intro.ZIndex = 10
+	intro.Parent = MainFrame
+
+	TweenService:Create(MainFrame, TweenInfo.new(0.4), {BackgroundTransparency = TRANSPARENCY}):Play()
+	TweenService:Create(intro, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+	task.wait(0.8)
+
+	TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = FINAL_SIZE}):Play()
+	task.wait(0.25)
+
+	TweenService:Create(intro, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+	task.wait(0.2)
+	intro:Destroy()
+
+	for _, obj in ipairs({TitleBar, Content, Title, Label, Red, Yellow, Green}) do
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+			TweenService:Create(obj, TWEEN_INFO, {TextTransparency = 0}):Play()
+		end
+		if obj:IsA("Frame") or obj:IsA("TextButton") then
+			-- TitleBar starts at 1 transparency, will tween to TRANSPARENCY (0.3)
+			TweenService:Create(obj, TWEEN_INFO, {BackgroundTransparency = obj.BackgroundTransparency == 1 and TRANSPARENCY or obj.BackgroundTransparency}):Play()
+		end
+	end
+end
+
+animateStartup()
+
+-- =======================================================================================
+-- Candy Autofarm CORE (embedded)
+-- =======================================================================================
+local Candy = {}
+do
+	-- Config & state
+	local running = false
+	local visitedCount = 0
+	local tweenSpeed = 0.1
+	local stayDelay = 0
+	local fixedY = hrp.Position.Y
+	local stopwatchStart = 0
+	local stopwatchRunning = false
+
+	-- Selection highlight helper
+	local function highlightPart(part)
+		local box = Instance.new("SelectionBox")
+		box.Adornee = part
+		box.LineThickness = 0.05
+		box.Color3 = Color3.fromRGB(255, 0, 0)
+		box.SurfaceTransparency = 0.5
+		box.Parent = workspace -- parent to workspace so it isn't destroyed if part is reparented
+		-- attach to the part explicitly
+		box.Adornee = part
+		return box
+	end
+
+	local function getCandyParts()
+		local parts = {}
+		local function collect(folder)
+			if not folder then return end
+			for _, obj in ipairs(folder:GetChildren()) do
+				if obj:IsA("BasePart") then
+					table.insert(parts, obj)
+				elseif obj:IsA("Model") then
+					local main = obj:FindFirstChildWhichIsA("BasePart")
+					if main then table.insert(parts, main) end
+				end
+			end
+		end
+		collect(workspace:FindFirstChild("CandyPickups"))
+		collect(workspace:FindFirstChild("CandySpawns"))
+		return parts
+	end
+
+	local function tweenToCandy(candyPart)
+		if not candyPart or not candyPart:IsDescendantOf(game) then return end
+		humanoid.Sit = true
+		local box = highlightPart(candyPart)
+		local tweenInfo = TweenInfo.new(tweenSpeed, Enum.EasingStyle.Linear)
+		local targetPos = Vector3.new(candyPart.Position.X, fixedY, candyPart.Position.Z)
+		local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(targetPos)})
+		tween:Play()
+		tween.Completed:Wait()
+		if box and box.Parent then box:Destroy() end
+		visitedCount = visitedCount + 1
+		-- stay for the configured delay
+		if stayDelay > 0 then task.wait(stayDelay) end
+	end
+
+	local farmThread
+	function Candy.Start()
+		if running then return end
+		running = true
+		visitedCount = 0
+		stopwatchStart = os.clock()
+		stopwatchRunning = true
+
+		farmThread = task.spawn(function()
+			while running do
+				local candies = getCandyParts()
+				if #candies == 0 then
+					task.wait(1)
+				else
+					for _, candy in ipairs(candies) do
+						if not running then break end
+						if candy and hrp then
+							pcall(tweenToCandy, candy)
+						end
+					end
+				end
+				-- small break to prevent tight loops if necessary
+				task.wait(0.05)
+			end
+			stopwatchRunning = false
+			humanoid.Sit = false
+		end)
+	end
+
+	function Candy.Stop()
+		if not running then return end
+		running = false
+		stopwatchRunning = false
+		humanoid.Sit = false
+		visitedCount = visitedCount -- preserve until reset by UI if desired
+	end
+
+	function Candy.IsRunning()
+		return running
+	end
+
+	function Candy.GetVisited()
+		return visitedCount
+	end
+
+	function Candy.SetTweenSpeed(val)
+		tweenSpeed = math.clamp(val or 0.1, 0, 1)
+	end
+
+	function Candy.SetStayDelay(val)
+		stayDelay = math.clamp(val or 0, 0, 1)
+	end
+
+	function Candy.GetStopwatch()
+		if stopwatchRunning and stopwatchStart > 0 then
+			return os.clock() - stopwatchStart
+		elseif stopwatchStart > 0 then
+			return 0
+		else
+			return 0
+		end
+	end
+end
+
+-- =======================================================================================
+-- Sliding Panel UI (appears from LEFT)
+-- =======================================================================================
+local panelWidth = math.floor( (MainFrame.AbsoluteSize.X) * 0.6 ) -- percentage of window width (will update on resize)
+local slidePanel = Instance.new("Frame")
+slidePanel.Name = "CandyPanel"
+slidePanel.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+slidePanel.Size = UDim2.new(0, panelWidth, 1, -TITLE_BAR_HEIGHT)
+-- start off to the left of the content area
+slidePanel.Position = UDim2.new(-1, 0, 0, TITLE_BAR_HEIGHT)
+slidePanel.BorderSizePixel = 0
+slidePanel.ClipsDescendants = true
+slidePanel.Parent = MainFrame
+Instance.new("UICorner", slidePanel).CornerRadius = UDim.new(0, 8)
+
+-- inner padding frame for nice spacing
+local pad = Instance.new("Frame")
+pad.Size = UDim2.new(1, -16, 1, -16)
+pad.Position = UDim2.new(0, 8, 0, 8)
+pad.BackgroundTransparency = 1
+pad.Parent = slidePanel
+
+local panelLayout = Instance.new("UIListLayout")
+panelLayout.Padding = UDim.new(0, 8)
+panelLayout.FillDirection = Enum.FillDirection.Vertical
+panelLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+panelLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+panelLayout.Parent = pad
+
+-- UI Elements in slider panel
+
+-- NEW: Go Back button
+local backBtn = Instance.new("TextButton")
+backBtn.Size = UDim2.new(0, 220, 0, 36) -- Match size of startBtn
+backBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+backBtn.TextColor3 = Color3.new(1, 1, 1)
+backBtn.Font = Enum.Font.SourceSansBold
+backBtn.TextSize = 14
+backBtn.Text = "← Go Back"
+backBtn.Parent = pad
+backBtn.LayoutOrder = 0 -- Ensure it's the first element
+Instance.new("UICorner", backBtn).CornerRadius = UDim.new(0, 6)
+
+local startBtn = Instance.new("TextButton")
+startBtn.Size = UDim2.new(0, 220, 0, 38)
+startBtn.BackgroundColor3 = Color3.fromRGB(50,50,60)
+startBtn.TextColor3 = Color3.new(1,1,1)
+startBtn.Font = Enum.Font.SourceSansBold
+startBtn.TextSize = 16
+startBtn.Text = "Start Auto-Farm"
+startBtn.Parent = pad
+Instance.new("UICorner", startBtn).CornerRadius = UDim.new(0,6)
+
+local timeLabel = Instance.new("TextLabel")
+timeLabel.Size = UDim2.new(0, 220, 0, 30)
+timeLabel.BackgroundColor3 = Color3.fromRGB(35,35,40)
+timeLabel.TextColor3 = Color3.new(1,1,1)
+timeLabel.Font = Enum.Font.SourceSansBold
+timeLabel.TextSize = 14
+timeLabel.Text = "Time: 0s"
+timeLabel.Parent = pad
+Instance.new("UICorner", timeLabel).CornerRadius = UDim.new(0,6)
+
+local partsLabel = Instance.new("TextLabel")
+partsLabel.Size = UDim2.new(0, 220, 0, 30)
+partsLabel.BackgroundColor3 = Color3.fromRGB(35,35,40)
+partsLabel.TextColor3 = Color3.new(1,1,1)
+partsLabel.Font = Enum.Font.SourceSansBold
+partsLabel.TextSize = 14
+partsLabel.Text = "Parts Teleported To: 0"
+partsLabel.Parent = pad
+Instance.new("UICorner", partsLabel).CornerRadius = UDim.new(0,6)
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0, 220, 0, 32)
+speedBox.BackgroundColor3 = Color3.fromRGB(45,45,50)
+speedBox.TextColor3 = Color3.new(1,1,1)
+speedBox.Font = Enum.Font.SourceSans
+speedBox.PlaceholderText = "Speed For Tween (0 - 1)"
+speedBox.Text = "0.1"
+speedBox.ClearTextOnFocus = false
+speedBox.TextScaled = false
+speedBox.TextSize = 14 
+speedBox.Parent = pad
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0,6)
+
+local delayBox = Instance.new("TextBox")
+delayBox.Size = UDim2.new(0, 220, 0, 32)
+delayBox.BackgroundColor3 = Color3.fromRGB(45,45,50)
+delayBox.TextColor3 = Color3.new(1,1,1)
+delayBox.Font = Enum.Font.SourceSans
+delayBox.PlaceholderText = "Stay Put Delay (0 - 1)"
+delayBox.Text = "0"
+delayBox.ClearTextOnFocus = false
+delayBox.TextScaled = false
+delayBox.TextSize = 14 
+delayBox.Parent = pad
+Instance.new("UICorner", delayBox).CornerRadius = UDim.new(0,6)
+
+-- Keep the slidePanel hidden initially (positioned left). We'll toggle with candyLauncher.
+local panelOpen = false
+local panelAnimationTime = 0.35
+
+local function openPanel()
+	if panelOpen then return end
+	local goalPos = UDim2.new(0, 0, 0, TITLE_BAR_HEIGHT) -- align to left inside MainFrame
+	-- Because slidePanel is direct child of MainFrame, its Y should be TITLE_BAR_HEIGHT; set via tween
+	TweenService:Create(slidePanel, TweenInfo.new(panelAnimationTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, TITLE_BAR_HEIGHT)}):Play()
+	panelOpen = true
+end
+
+local function closePanel()
+	if not panelOpen then return end
+	-- slide back to left off-screen
+	TweenService:Create(slidePanel, TweenInfo.new(panelAnimationTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(-1, 0, 0, TITLE_BAR_HEIGHT)}):Play()
+	panelOpen = false
+end
+
+candyLauncher.MouseButton1Click:Connect(function()
+	if panelOpen then
+		closePanel()
+	else
+		openPanel()
+	end
+end)
+
+backBtn.MouseButton1Click:Connect(closePanel) -- New: Go Back button logic
+
+-- Keep slidePanel positioned correctly regarding size when MainFrame resizes
+MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	local newWidth = math.floor(MainFrame.AbsoluteSize.X * 0.6)
+	slidePanel.Size = UDim2.new(0, newWidth, 1, -TITLE_BAR_HEIGHT)
+end)
+
+-- =======================================================================================
+-- Wire up controls -> Candy core
+-- =======================================================================================
+-- utility to format seconds nicely
+local function formatTime(sec)
+	sec = math.max(0, math.floor(sec or 0))
+	local s = sec % 60
+	local m = math.floor(sec / 60) % 60
+	local h = math.floor(sec / 3600)
+	if h > 0 then
+		return string.format("%02d:%02d:%02d", h, m, s)
+	else
+		return string.format("%02d:%02d", m, s)
+	end
+end
+
+-- Update loop for Time label and Parts label while running
+local uiUpdateConn
+local function startUIUpdater()
+	if uiUpdateConn then return end
+	uiUpdateConn = RunService.Heartbeat:Connect(function()
+		-- update stopwatch if running
+		if Candy.IsRunning() then
+			local t = Candy.GetStopwatch() or 0
+			timeLabel.Text = "Time: " .. formatTime(t)
+			partsLabel.Text = "Parts Teleported To: " .. tostring(Candy.GetVisited())
+		end
+	end)
+end
+
+local function stopUIUpdater()
+	if uiUpdateConn then
+		uiUpdateConn:Disconnect()
+		uiUpdateConn = nil
+	end
+end
+
+-- Start/Stop toggle behavior
+startBtn.MouseButton1Click:Connect(function()
+	if not Candy.IsRunning() then
+		-- apply speed and delay values from boxes (validate)
+		local sp = tonumber(speedBox.Text) or tonumber(speedBox.PlaceholderText) or 0.1
+		local sd = tonumber(delayBox.Text) or tonumber(delayBox.PlaceholderText) or 0
+		sp = math.clamp(sp, 0, 1) --67???
+		sd = math.clamp(sd, 0, 1)
+		Candy.SetTweenSpeed(sp)
+		Candy.SetStayDelay(sd)
+		-- Start
+		Candy.Start()
+		startBtn.Text = "Stop Auto-Farm"
+		-- reset UI counters
+		timeLabel.Text = "Time: 00:00"
+		partsLabel.Text = "Parts Teleported To: 0"
+		startUIUpdater()
+	else
+		-- Stop
+		Candy.Stop()
+		startBtn.Text = "Start Auto-Farm"
+		timeLabel.Text = "Time: 00:00"
+		partsLabel.Text = "Parts Teleported To: " .. tostring(Candy.GetVisited())
+		stopUIUpdater()
+	end
+end)
+
+-- Validate and clamp inputs when editing finished
+local function clampTextBoxInput(tb, default)
+	tb.FocusLost:Connect(function(enterPressed)
+		local val = tonumber(tb.Text)
+		if not val then
+			tb.Text = tostring(default)
+			return
+		end
+		val = math.clamp(val, 0, 1)
+		tb.Text = tostring(val)
+		-- apply immediately if farm is not running (and for speed, if farm is running we apply on next start)
+		if tb == speedBox then
+			Candy.SetTweenSpeed(val)
+		elseif tb == delayBox then
+			Candy.SetStayDelay(val)
+		end
+	end)
+end
+
+clampTextBoxInput(speedBox, 0.1)
+clampTextBoxInput(delayBox, 0)
+
+-- Ensure UI updater stops if GUI is destroyed
+ScreenGui.AncestryChanged:Connect(function(_, parent)
+	if not parent then
+		stopUIUpdater()
+	end
+end)
+
+-- Keep visited count label synced occasionally (in case)
+task.spawn(function()
+	while ScreenGui.Parent do
+		partsLabel.Text = "Parts Teleported To: " .. tostring(Candy.GetVisited())
+		task.wait(0.5)
+	end
+end)
+
+-- End of script
