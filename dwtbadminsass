@@ -678,72 +678,61 @@ end
 -- SettingsPanel will be created later, we'll add its button then
 
 
+--// BUTTON LOGIC (close / minimize / green)
+local minimized = false
+local debounce = false
+local guiElements = {MainFrame, TitleBar, Content, Title, Label, Red, Yellow, Green}
+
 Red.MouseButton1Click:Connect(function()
-    if debounce then return end
-    debounce = true
-    
-    -- Stop all bots on close
-    BrainrotStealer.Stop()
-    Candy.Stop()
-    
-    local fadeOut = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-    
-    -- Fade out all necessary elements
-    for _, obj in ipairs(guiElements) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            TweenService:Create(obj, fadeOut, {TextTransparency = 1}):Play()
-        end
-        if obj:IsA("Frame") or obj:IsA("TextButton") then
-            TweenService:Create(obj, fadeOut, {BackgroundTransparency = 1}):Play()
-        end
-    end
-    
-    -- Fade out the container and destroy the GUI after the fade completes
-    -- MainFrame is already in guiElements
-    
-    task.wait(0.6)
-    ScreenGui:Destroy()
+	if debounce then return end
+	debounce = true
+	local fadeOut = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	for _, obj in ipairs(guiElements) do
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+			TweenService:Create(obj, fadeOut, {TextTransparency = 1}):Play()
+		end
+		if obj:IsA("Frame") or obj:IsA("TextButton") then
+			TweenService:Create(obj, fadeOut, {BackgroundTransparency = 1}):Play()
+		end
+	end
+	task.wait(0.6)
+	ScreenGui:Destroy()
 end)
 
 Yellow.MouseButton1Click:Connect(function()
-    if debounce then return end
-    debounce = true
-    
-    -- Close any open panels before minimizing
-    if panelOpen then closePanel() end
-    if funPanelOpen then closeFunPanel() end
-    if settingsPanelOpen then closeSettingsPanel() end -- NEW
-    
+	if debounce then return end
+	debounce = true
+
     -- Exit full screen if active before minimizing
     if fullScreen then
         Green.MouseButton1Click:Fire()
         task.wait(TWEEN_INFO.Time)
     end
-    
-    local goal = {}
+
+	local goal = {}
     local currentWidth = MainFrame.Size.X
-    if minimized then
-        goal.Size = DEFAULT_SIZE -- Use DEFAULT_SIZE to restore
+	if minimized then
+		goal.Size = FINAL_SIZE
         TweenService:Create(Content, TWEEN_INFO, {BackgroundTransparency = TRANSPARENCY}):Play()
         TweenService:Create(Label, TWEEN_INFO, {TextTransparency = 0}):Play()
-    else
-        goal.Size = UDim2.new(currentWidth.Scale, currentWidth.Offset, 0, TITLE_BAR_HEIGHT)
+	else
+		goal.Size = UDim2.new(currentWidth.Scale, currentWidth.Offset, 0, TITLE_BAR_HEIGHT)
         TweenService:Create(Content, TWEEN_INFO, {BackgroundTransparency = 1}):Play()
         TweenService:Create(Label, TWEEN_INFO, {TextTransparency = 1}):Play()
-    end
-    
-    TweenService:Create(MainFrame, TWEEN_INFO, goal):Play()
-    minimized = not minimized
-    task.delay(TWEEN_INFO.Time, function() debounce = false end)
+	end
+
+	TweenService:Create(MainFrame, TWEEN_INFO, goal):Play()
+	minimized = not minimized
+	task.delay(TWEEN_INFO.Time, function() debounce = false end)
 end)
 
 -- Green Button Logic (HANDLES TOGGLE AND TOOLTIP)
 Green.MouseButton1Click:Connect(function()
     if debounce then return end
     debounce = true
-    
-    local tooltip = Green:FindFirstChild("TooltipLabel")
-    
+
+    local tooltip = Green:FindFirstChildOfClass("TextLabel")
+
     -- Cannot go full screen while minimized
     if minimized then
         Yellow.MouseButton1Click:Fire()
@@ -761,16 +750,16 @@ Green.MouseButton1Click:Connect(function()
 
         targetSize = UDim2.new(1, 0, 1, 0)
         targetPosition = UDim2.new(0.5, 0, 0.5, 0) -- Centered for full screen
-        
-        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = 0.5}):Play()
+
+        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = 0.5}):Play() 
         fullScreen = true
         if tooltip then tooltip.Text = "Restore Down" end -- Tooltip update
     else
         -- 2. Go back to Original Size (Toggle Off)
         targetSize = originalSize
         targetPosition = originalPosition
-        
-        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = TRANSPARENCY}):Play()
+
+        TweenService:Create(TitleBar, TWEEN_INFO, {BackgroundTransparency = TRANSPARENCY}):Play() 
         fullScreen = false
         if tooltip then tooltip.Text = "Full-Screen Mode" end -- Tooltip update
     end
@@ -780,37 +769,13 @@ Green.MouseButton1Click:Connect(function()
         Size = targetSize,
         Position = targetPosition
     })
-    
+
     tween:Play()
 
     -- Release debounce after tween completion
     tween.Completed:Wait()
-    
-    -- If panels are open, update their size/position now that MainFrame size has changed
-    if panelOpen or funPanelOpen then
-        local newWidth = math.floor(MainFrame.AbsoluteSize.X * 0.6)
-        if slidePanel then
-            slidePanel.Size = UDim2.new(0, newWidth, 1, -TITLE_BAR_HEIGHT)
-            if panelOpen then
-                slidePanel.Position = UDim2.new(0, 0, 0, TITLE_BAR_HEIGHT) -- Reposition if open
-            end
-        end
-        if FunPanel then
-            FunPanel.Size = UDim2.new(0, newWidth, 1, -TITLE_BAR_HEIGHT)
-            if funPanelOpen then
-                FunPanel.Position = UDim2.new(1, -newWidth, 0, TITLE_BAR_HEIGHT) -- Reposition if open
-            end
-        end
-    end
-    -- NEW: Resize settings panel if open
-    if settingsPanelOpen and SettingsPanel then
-        SettingsPanel.Size = UDim2.new(1, 0, 1, -TITLE_BAR_HEIGHT)
-    end
-    
     task.delay(0.1, function() debounce = false end)
 end)
-
-
 --// STARTUP ANIMATION
 local function animateStartup()
     local intro = Instance.new("TextLabel")
