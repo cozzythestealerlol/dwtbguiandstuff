@@ -660,24 +660,6 @@ local function openSettingsPanel()
 end
 
 
--- ===============================================================================
--- // BUTTON LOGIC (FIXED FOR ROBUSTNESS ACROSS STATES)
--- ===============================================================================
-
-local guiElements = {TitleBar, Content, Title, Label, Red, Yellow, Green, MainFrame, candyLauncher, funLauncher, settingsLauncher}
--- This list needs to include the back buttons from the panels for the fade out
-task.wait() -- wait for panels to be created
-if slidePanel then
-    local backBtn = slidePanel:FindFirstChild("pad"):FindFirstChildOfClass("TextButton")
-    if backBtn then table.insert(guiElements, backBtn) end
-end
-if FunPanel then
-    local backBtn = FunPanel:FindFirstChild("funPad"):FindFirstChildOfClass("TextButton")
-    if backBtn then table.insert(guiElements, backBtn) end
-end
--- SettingsPanel will be created later, we'll add its button then
-
-
 --// BUTTON LOGIC (close / minimize / green)
 local minimized = false
 local debounce = false
@@ -776,6 +758,7 @@ Green.MouseButton1Click:Connect(function()
     tween.Completed:Wait()
     task.delay(0.1, function() debounce = false end)
 end)
+
 --// STARTUP ANIMATION
 local function animateStartup()
     local intro = Instance.new("TextLabel")
