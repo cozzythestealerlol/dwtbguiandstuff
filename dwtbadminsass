@@ -531,7 +531,7 @@ end
 local candyLauncher = createControlButton("Candy Auto-Farm", 200)
 local funLauncher = createControlButton("Fun / Miscellaneous", 200) -- RENAMED
 local settingsLauncher = createControlButton("Settings", 200)
-local settingsLauncher = createControlButton("Made By: Cozzy", 200)
+local robloxLauncher = createControlButton("Made By: Cozzy", 200)
 
 --// DRAGGING FIXED
 do
